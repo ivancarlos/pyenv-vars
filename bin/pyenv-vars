@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# Usage: pyenv vars
+#
+# Prints all pyenv-vars environment variables applicable to the
+# current working directory in the order they will be set. The output
+# format is a script that may be passed to `eval` in a Bourne-
+# compatible shell.
+#
+# For more information on pyenv-vars, see:
+# https://github.com/sstephenson/pyenv-vars#readme
+
+set -e
+[ -n "$pyenv_DEBUG" ] && set -x
+
+if [ -z "$pyenv_DIR" ]; then
+  export pyenv_DIR="$(pwd)"
+fi
+
+if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
+  echo "pyenv-vars 1.2.0"
+  exit
+fi
+
+find-pyenv-vars-files() {
+  if [ -e "${pyenv_ROOT}/vars" ]; then
+    echo "${pyenv_ROOT}/vars"
+  fi
+
+  local root="$pyenv_DIR"
+  local results=""
+
+  while [ -n "$root" ]; do
+    if [ -e "${root}/.vars" ]; then
+      results="${root}/.vars"$'\n'"$results"
+    fi
+    root="${root%/*}"
+  done
+
+  echo -n "$results"
+}
+
+sanitize-vars() {
+  sed \
+    -e "/^[ "$'\t'"]*[A-Za-z_][0-9A-Za-z_]*?\{0,1\}=/ !d" \
+    -e "s/'/'\\\\''/g" \
+    -e "s/\(\\\\\\\$\)/'\\1'/g" \
+    -e "s/\\\\\\\\/\\\\/g" \
+    -e "s/\(\\\$[0-9A-Za-z_][0-9A-Za-z_]*\)/'\\1'/g" \
+    -e "s/\(\\\${[0-9A-Za-z_][0-9A-Za-z_]*}\)/'\\1'/g" \
+    -e "s/^[ "$'\t'"]*\([A-Za-z_][0-9A-Za-z_]*?\{0,1\}\)=\(.*\)$/export \\1='\\2'/" \
+    -e "s/export \([A-Za-z_][0-9A-Za-z_]*\)?=/[ -n \"\$\\1\" ] || export \\1=/g" \
+    -e 's/{\([^{}]\+\)}/$\1/g'
+}
+
+while read file; do
+  echo "# $file"
+  { cat "$file"; echo; } | sanitize-vars
+  echo
+done < <( find-pyenv-vars-files )
